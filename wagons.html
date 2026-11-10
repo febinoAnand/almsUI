@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAILMET - Rail In-Motion Weighing System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/railmet.css">
+    <link rel="stylesheet" href="css/custom.css">
+</head>
+<body>
+<main class="rm-content" hidden>
+    <div style="display:flex;flex-direction:column;height:100%;min-height:0;">
+        <div class="rm-summary-row">
+            <div class="rm-summary-card"><div class="rm-sc-label">Rake Number</div><div class="rm-sc-value blue" id="scRake">---</div></div>
+            <div class="rm-summary-card"><div class="rm-sc-label">Total Wagons</div><div class="rm-sc-value green" id="scWagons">0</div></div>
+            <div class="rm-summary-card"><div class="rm-sc-label">Total Weight (T)</div><div class="rm-sc-value orange" id="scWeight">000.00</div></div>
+            <div class="rm-summary-card"><div class="rm-sc-label">Indicator Status</div>
+                <div class="rm-sc-value green" style="font-size:16px;display:flex;align-items:center;gap:8px;"><span class="rm-status-pulse"></span> SYSTEM ONLINE</div></div>
+            <div class="rm-summary-card"><div class="rm-sc-label">MQTT Broker</div>
+                <div class="rm-sc-value green" style="font-size:16px;">Connected</div><div style="font-size:10px;color:#718096;margin-top:2px;">OK</div></div>
+            <div class="rm-summary-card"><div class="rm-sc-label">Direction</div><div class="rm-sc-value dark" id="scDirection">---</div></div>
+        </div>
+
+        <div class="rm-section-title">Live Wagon Grid</div>
+        <div class="rm-table-wrap wagon-grid-wrap">
+            <div class="rm-table-scroll wagon-grid" id="gridScroll">
+                <table class="rm-wagon-table">
+                    <thead><tr>
+                        <th>Wagon</th><th>Front Bogie</th><th>Rear Bogie</th><th>Gross (T)</th><th>Speed</th>
+                        <th>LH1</th><th>RH1</th><th>LH2</th><th>RH2</th><th>LH3</th><th>RH3</th><th>LH4</th><th>RH4</th>
+                        <th>LH1-RH1</th><th>LH2-RH2</th><th>LH3-RH3</th><th>LH4-RH4</th>
+                        <th>Bogie1 (LH to RH)</th><th>Bogie2 (LH to RH)</th><th>Wagon (LHS to RHS)</th>
+                    </tr></thead>
+                    <tbody id="gridBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="rm-bottom-grid">
+            <div class="rm-panel" style="display:flex;flex-direction:column;">
+                <div class="rm-panel-body" style="display:flex;flex-direction:column;flex:1;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#F7FAFC;border:1px solid #E2E8F0;border-radius:6px;margin-bottom:12px;">
+                        <span style="font-size:13px;font-weight:600;color:#1a1a2e;">Power supply</span>
+                        <span class="rm-pill" id="pillPower" style="background:#DC2626;">OFF</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#F7FAFC;border:1px solid #E2E8F0;border-radius:6px;margin-bottom:12px;">
+                        <span style="font-size:13px;font-weight:600;color:#1a1a2e;">Indicator</span>
+                        <span class="rm-pill" id="pillIndicator" style="background:#718096;">&nbsp;</span>
+                    </div>
+                    <div style="flex:1;"></div>
+                    <div class="rm-btn-row" style="margin-top:auto;" id="opButtons">
+                        <button class="rm-btn rm-btn-blue" id="btnSrcDst"><i class="bi bi-geo-alt"></i> Source/Destination</button>
+                        <button class="rm-btn rm-btn-red" id="btnReset"><i class="bi bi-arrow-counterclockwise"></i> Reset</button>
+                        <button class="rm-btn rm-btn-blue" id="btnRefresh"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+                        <button class="rm-btn rm-btn-blue" id="btnEnd"><i class="bi bi-stop-circle"></i> End Weighment</button>
+                    </div>
+                    <div id="srcDstBox" style="display:none;gap:10px;margin-top:10px;">
+                        <div style="display:flex;flex-direction:column;gap:4px;">
+                            <label class="rm-data-label" style="font-size:10px;">Source</label>
+                            <input class="rm-filter-select" style="width:130px;" placeholder="Source station" id="inSource">
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:4px;">
+                            <label class="rm-data-label" style="font-size:10px;">Destination</label>
+                            <input class="rm-filter-select" style="width:130px;" placeholder="Destination station" id="inDest">
+                        </div>
+                    </div>
+                    <div class="rm-locked-note" id="lockedNote" hidden style="margin-top:8px;"><i class="bi bi-lock"></i> Weighment controls require the <code>wagons.operate</code> permission.</div>
+                </div>
+            </div>
+
+            <div class="rm-panel">
+                <div class="rm-panel-header"><span class="rm-panel-title">Live Axle Monitoring</span></div>
+                <div class="rm-panel-body">
+                    <div class="rm-wagon-img-wrap"><svg viewBox="0 0 800 220" width="100%" height="160" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="95" width="30" height="18" rx="2" fill="#6B7280" stroke="#4B5563" stroke-width="1"></rect><rect x="2" y="100" width="12" height="8" rx="1" fill="#9CA3AF" stroke="#6B7280" stroke-width="0.8"></rect><rect x="765" y="95" width="30" height="18" rx="2" fill="#6B7280" stroke="#4B5563" stroke-width="1"></rect><rect x="786" y="100" width="12" height="8" rx="1" fill="#9CA3AF" stroke="#6B7280" stroke-width="0.8"></rect><rect x="60" y="110" width="680" height="14" rx="1" fill="#6B7280" stroke="#4B5563" stroke-width="1"></rect><line x1="60" y1="117" x2="740" y2="117" stroke="#4B5563" stroke-width="1"></line><rect x="70" y="30" width="660" height="80" rx="1" fill="#9CA3AF" stroke="#6B7280" stroke-width="1.2"></rect><line x1="150" y1="30" x2="150" y2="110" stroke="#6B7280" stroke-width="2"></line><line x1="230" y1="30" x2="230" y2="110" stroke="#6B7280" stroke-width="2"></line><line x1="310" y1="30" x2="310" y2="110" stroke="#6B7280" stroke-width="2"></line><line x1="390" y1="30" x2="390" y2="110" stroke="#6B7280" stroke-width="2"></line><line x1="470" y1="30" x2="470" y2="110" stroke="#6B7280" stroke-width="2"></line><line x1="550" y1="30" x2="550" y2="110" stroke="#6B7280" stroke-width="2"></line><line x1="630" y1="30" x2="630" y2="110" stroke="#6B7280" stroke-width="2"></line><rect x="70" y="26" width="660" height="6" rx="1" fill="#7C8590" stroke="#6B7280" stroke-width="0.8"></rect><rect x="70" y="75" width="660" height="35" rx="0" fill="#88919B" opacity="0.6"></rect><rect x="70" y="106" width="660" height="5" rx="0" fill="#7C8590" stroke="#6B7280" stroke-width="0.8"></rect><rect x="147" y="28" width="6" height="84" rx="1" fill="#6B7280"></rect><rect x="227" y="28" width="6" height="84" rx="1" fill="#6B7280"></rect><rect x="307" y="28" width="6" height="84" rx="1" fill="#6B7280"></rect><rect x="387" y="28" width="6" height="84" rx="1" fill="#6B7280"></rect><rect x="467" y="28" width="6" height="84" rx="1" fill="#6B7280"></rect><rect x="547" y="28" width="6" height="84" rx="1" fill="#6B7280"></rect><rect x="627" y="28" width="6" height="84" rx="1" fill="#6B7280"></rect><rect x="110" y="124" width="180" height="12" rx="2" fill="#4B5563" stroke="#374151" stroke-width="1"></rect><rect x="120" y="130" width="160" height="8" rx="1" fill="#374151"></rect><rect x="130" y="118" width="8" height="14" rx="1" fill="#6B7280" stroke="#4B5563" stroke-width="0.8"></rect><rect x="132" y="120" width="4" height="3" rx="0.5" fill="#9CA3AF"></rect><rect x="132" y="125" width="4" height="3" rx="0.5" fill="#9CA3AF"></rect><rect x="252" y="118" width="8" height="14" rx="1" fill="#6B7280" stroke="#4B5563" stroke-width="0.8"></rect><rect x="254" y="120" width="4" height="3" rx="0.5" fill="#9CA3AF"></rect><rect x="254" y="125" width="4" height="3" rx="0.5" fill="#9CA3AF"></rect><rect x="145" y="136" width="60" height="6" rx="1" fill="#4B5563"></rect><circle cx="155" cy="165" r="24" fill="#374151" stroke="#1F2937" stroke-width="2"></circle><circle cx="155" cy="165" r="18" fill="#4B5563"></circle><circle cx="155" cy="165" r="12" fill="#374151"></circle><circle cx="155" cy="165" r="6" fill="#6B7280" stroke="#4B5563" stroke-width="1"></circle><circle cx="235" cy="165" r="24" fill="#374151" stroke="#1F2937" stroke-width="2"></circle><circle cx="235" cy="165" r="18" fill="#4B5563"></circle><circle cx="235" cy="165" r="12" fill="#374151"></circle><circle cx="235" cy="165" r="6" fill="#6B7280" stroke="#4B5563" stroke-width="1"></circle><rect x="510" y="124" width="180" height="12" rx="2" fill="#4B5563" stroke="#374151" stroke-width="1"></rect><rect x="520" y="130" width="160" height="8" rx="1" fill="#374151"></rect><rect x="530" y="118" width="8" height="14" rx="1" fill="#6B7280" stroke="#4B5563" stroke-width="0.8"></rect><rect x="532" y="120" width="4" height="3" rx="0.5" fill="#9CA3AF"></rect><rect x="532" y="125" width="4" height="3" rx="0.5" fill="#9CA3AF"></rect><rect x="652" y="118" width="8" height="14" rx="1" fill="#6B7280" stroke="#4B5563" stroke-width="0.8"></rect><rect x="654" y="120" width="4" height="3" rx="0.5" fill="#9CA3AF"></rect><rect x="654" y="125" width="4" height="3" rx="0.5" fill="#9CA3AF"></rect><rect x="545" y="136" width="60" height="6" rx="1" fill="#4B5563"></rect><circle cx="555" cy="165" r="24" fill="#374151" stroke="#1F2937" stroke-width="2"></circle><circle cx="555" cy="165" r="18" fill="#4B5563"></circle><circle cx="555" cy="165" r="12" fill="#374151"></circle><circle cx="555" cy="165" r="6" fill="#6B7280" stroke="#4B5563" stroke-width="1"></circle><circle cx="635" cy="165" r="24" fill="#374151" stroke="#1F2937" stroke-width="2"></circle><circle cx="635" cy="165" r="18" fill="#4B5563"></circle><circle cx="635" cy="165" r="12" fill="#374151"></circle><circle cx="635" cy="165" r="6" fill="#6B7280" stroke="#4B5563" stroke-width="1"></circle><rect x="147" y="140" width="16" height="10" rx="2" fill="#374151"></rect><rect x="227" y="140" width="16" height="10" rx="2" fill="#374151"></rect><rect x="547" y="140" width="16" height="10" rx="2" fill="#374151"></rect><rect x="627" y="140" width="16" height="10" rx="2" fill="#374151"></rect><circle cx="155" cy="165" r="22" fill="none" stroke="#6B7280" stroke-width="0.8"></circle><circle cx="235" cy="165" r="22" fill="none" stroke="#6B7280" stroke-width="0.8"></circle><circle cx="555" cy="165" r="22" fill="none" stroke="#6B7280" stroke-width="0.8"></circle><circle cx="635" cy="165" r="22" fill="none" stroke="#6B7280" stroke-width="0.8"></circle><line x1="155" y1="147" x2="155" y2="183" stroke="#6B7280" stroke-width="1.5"></line><line x1="137" y1="165" x2="173" y2="165" stroke="#6B7280" stroke-width="1.5"></line><line x1="235" y1="147" x2="235" y2="183" stroke="#6B7280" stroke-width="1.5"></line><line x1="217" y1="165" x2="253" y2="165" stroke="#6B7280" stroke-width="1.5"></line><line x1="555" y1="147" x2="555" y2="183" stroke="#6B7280" stroke-width="1.5"></line><line x1="537" y1="165" x2="573" y2="165" stroke="#6B7280" stroke-width="1.5"></line><line x1="635" y1="147" x2="635" y2="183" stroke="#6B7280" stroke-width="1.5"></line><line x1="617" y1="165" x2="653" y2="165" stroke="#6B7280" stroke-width="1.5"></line><rect x="340" y="118" width="120" height="10" rx="2" fill="#4B5563" stroke="#374151" stroke-width="0.8"></rect></svg></div>
+                    <div class="rm-axle-row" id="axleRow"></div>
+                    <div class="rm-bottom-info">
+                        <div><span class="rm-bi-label">Front Bogie:</span> <span class="rm-bi-val" id="aiFront">00.00 T</span></div>
+                        <div><span class="rm-bi-label">Rear Bogie:</span> <span class="rm-bi-val" id="aiRear">00.00 T</span></div>
+                    </div>
+                    <div class="rm-axle-info" style="margin-top:10px;">
+                        <div><span class="rm-ai-label">Wagon Weight</span></div><div><span class="rm-ai-val" id="aiWeight">00.00 T</span></div>
+                        <div><span class="rm-ai-label">Current Wagon</span></div><div><span class="rm-ai-val" id="aiCurrent">0</span></div>
+                    </div>
+                    <div class="rm-bottom-info" style="margin-top:10px;">
+                        <span class="rm-ai-label">WAGON TYPE</span>
+                        <select class="rm-select" id="selWagonType">
+                            <option>4 Axle Wagon</option><option>BOXN</option><option>BCNA</option><option>BTPN</option><option>BCCW</option><option>BRN</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <details style="margin-top:8px;background:#1a1a2e;border-radius:8px;padding:0;">
+            <summary style="cursor:pointer;padding:8px 12px;color:#94A3B8;font-size:12px;font-weight:600;user-select:none;" id="diagSummary">MQTT Diagnostics — Status: Connected | Messages Received: 0</summary>
+            <div style="padding:8px 12px 12px;font-size:11px;color:#94A3B8;font-family:monospace;max-height:200px;overflow-y:auto;">
+                <div style="margin-bottom:4px;" id="diagTopics"></div>
+                <div style="margin-bottom:4px;"><strong>Error:</strong> None</div>
+                <div style="margin-bottom:4px;"><strong>Last Message:</strong> <span id="diagLast"></span></div>
+                <div style="word-break:break-all;"><strong>Last HEX:</strong> <span id="diagHex"></span></div>
+            </div>
+        </details>
+    </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="js/core.js"></script>
+<script src="js/data.js"></script>
+<script>
+(function () {
+    const user = RM.boot({ page: 'wagons', perm: 'wagons.view' });
+    if (!user) return;
+    const $ = id => document.getElementById(id);
+    const canOperate = RM.can('wagons.operate');
+    const LIVE = 'rm_live';
+
+    /* live state survives page navigation */
+    let st = RM.load(LIVE, null);
+    if (!st) st = fresh();
+    function fresh() {
+        return { rakeNo: RMData.nextRakeNo(), wagons: [], direction: '---', source: '', destination: '', wagonType: '4 Axle Wagon',
+                 incoming: 0, seed: Date.now() % 100000, startedAt: null };
+    }
+    const persist = () => RM.save(LIVE, st);
+    let selected = -1;
+
+    /* ---------- rendering ---------- */
+    const f2 = RM.t2;
+    const sign = v => (v > 0 ? '+' : '') + v.toFixed(2);
+    const cls = v => Math.abs(v) < 0.005 ? 'asym-zero' : (v > 0 ? 'asym-pos' : 'asym-neg');
+
+    function renderGrid() {
+        const body = $('gridBody');
+        if (!st.wagons.length) {
+            body.innerHTML = '<tr><td colspan="20" style="text-align:center;color:#A0AEC0;padding:40px;">Waiting for real-time data from MQTT broker...</td></tr>';
+        } else {
+            body.innerHTML = st.wagons.map((w, i) => {
+                const c = RMData.calc(w);
+                const cells = [];
+                for (let a = 0; a < 4; a++) cells.push('<td>' + f2(w.lh[a]) + '</td><td>' + f2(w.rh[a]) + '</td>');
+                return '<tr data-i="' + i + '"' + (i === selected ? ' class="selected"' : '') + '>' +
+                    '<td class="col-wagon">' + (i + 1) + '</td><td>' + f2(c.front) + '</td><td>' + f2(c.rear) + '</td>' +
+                    '<td class="col-gross">' + f2(c.gross) + '</td><td>' + w.speed.toFixed(1) + '</td>' + cells.join('') +
+                    c.diff.map(d => '<td class="' + cls(d) + '">' + sign(d) + '</td>').join('') +
+                    '<td class="' + cls(c.bogie1) + '">' + sign(c.bogie1) + '</td><td class="' + cls(c.bogie2) + '">' + sign(c.bogie2) + '</td>' +
+                    '<td class="' + cls(c.wagon) + '">' + sign(c.wagon) + '</td></tr>';
+            }).join('');
+        }
+        const total = st.wagons.reduce((s, w) => s + RMData.calc(w).gross, 0);
+        $('scRake').textContent = st.rakeNo;
+        $('scWagons').textContent = st.wagons.length;
+        $('scWeight').textContent = total.toFixed(2).padStart(6, '0');
+        $('scDirection').textContent = st.direction;
+        const active = st.incoming > 0;
+        $('pillPower').textContent = active ? 'ON' : 'OFF';
+        $('pillPower').style.background = active ? '#16A34A' : '#DC2626';
+        $('pillIndicator').innerHTML = active ? 'ACTIVE' : '&nbsp;';
+        $('pillIndicator').style.background = active ? '#16A34A' : '#718096';
+        $('selWagonType').value = st.wagonType;
+        $('inSource').value = st.source; $('inDest').value = st.destination;
+        renderAxles();
+    }
+
+    function renderAxles() {
+        const i = selected >= 0 ? selected : st.wagons.length - 1;
+        const w = st.wagons[i];
+        const c = w ? RMData.calc(w) : null;
+        $('axleRow').innerHTML = [0, 1, 2, 3].map(a =>
+            '<div class="rm-axle-card"><div class="rm-ac-title">Axle ' + (a + 1) + '</div>' +
+            '<div class="rm-ac-row"><span>LH</span><span class="rm-ac-val">' + f2(w ? w.lh[a] : 0) + ' T</span></div>' +
+            '<div class="rm-ac-row"><span>RH</span><span class="rm-ac-val">' + f2(w ? w.rh[a] : 0) + ' T</span></div></div>').join('');
+        $('aiFront').textContent = f2(c ? c.front : 0) + ' T';
+        $('aiRear').textContent = f2(c ? c.rear : 0) + ' T';
+        $('aiWeight').textContent = f2(c ? c.gross : 0) + ' T';
+        $('aiCurrent').textContent = w ? i + 1 : 0;
+    }
+
+    function renderDiag(d) {
+        const s = RMData.settings();
+        $('diagSummary').textContent = 'MQTT Diagnostics — Status: Connected | Messages Received: ' + d.count;
+        $('diagTopics').innerHTML = '<strong>Broker:</strong> ' + RM.esc(s.brokerHost) + ' | <strong>Subscribe:</strong> alms_main/userresp/' + RM.esc(s.deviceId) +
+            ' | <strong>Publish:</strong> alms_main/usercmd/' + RM.esc(s.deviceId);
+        $('diagLast').textContent = RMData.trunc(d.last, 140);
+        $('diagHex').textContent = d.hex;
+    }
+
+    /* ---------- simulated MQTT stream ---------- */
+    let idleTicks = 0;
+    function tick() {
+        if (st.incoming > 0) {
+            const rand = RMData.rng(st.seed + st.wagons.length * 7919);
+            const loaded = (st.seed % 10) > 2;
+            const w = RMData.makeWagon(rand, loaded);
+            st.wagons.push(w); st.incoming--;
+            renderDiag(RMData.mqttTick('wagon', { active: true, payload: { wagon: st.wagons.length, lh: w.lh, rh: w.rh, speed: w.speed } }));
+            persist(); renderGrid();
+            const sc = $('gridScroll'); sc.scrollTop = sc.scrollHeight;
+        } else {
+            renderDiag(RMData.mqttTick('beat'));
+            // a new rake arrives a few seconds after the page goes idle with an empty grid
+            if (!st.wagons.length && ++idleTicks === 4) {
+                const rand = RMData.rng(st.seed);
+                st.incoming = 12 + Math.floor(rand() * 14);
+                st.direction = rand() > 0.5 ? 'IN' : 'OUT';
+                st.startedAt = new Date().toISOString();
+                persist(); renderGrid();
+            }
+        }
+    }
+
+    /* ---------- events ---------- */
+    $('gridBody').addEventListener('click', e => {
+        const tr = e.target.closest('tr[data-i]'); if (!tr) return;
+        selected = +tr.dataset.i === selected ? -1 : +tr.dataset.i;
+        renderGrid();
+    });
+    $('selWagonType').onchange = e => { st.wagonType = e.target.value; persist(); };
+    $('inSource').oninput = e => { st.source = e.target.value; persist(); };
+    $('inDest').oninput = e => { st.destination = e.target.value; persist(); };
+
+    $('btnSrcDst').onclick = () => {
+        const box = $('srcDstBox');
+        box.style.display = box.style.display === 'none' ? 'flex' : 'none';
+    };
+    $('btnRefresh').onclick = () => { st = RM.load(LIVE, st); renderGrid(); renderDiag(RMData.mqttDiag()); RM.toast('Data refreshed.'); };
+    $('btnReset').onclick = async () => {
+        if (!await RM.confirmDialog('Reset', 'Clear all live wagon data for rake ' + st.rakeNo + '?', 'Reset', true)) return;
+        const keep = st.rakeNo; st = fresh(); st.rakeNo = keep; selected = -1; idleTicks = 0;
+        persist(); renderGrid(); RM.toast('Live data cleared.');
+    };
+    $('btnEnd').onclick = async () => {
+        if (!st.wagons.length) return RM.toast('No wagons weighed yet.', 'error');
+        if (st.incoming > 0) return RM.toast('Rake is still passing the weighbridge.', 'error');
+        if (!await RM.confirmDialog('End Weighment', 'Save rake ' + st.rakeNo + ' (' + st.wagons.length + ' wagons) and end weighment?', 'End Weighment')) return;
+        RMData.add({ rakeNo: st.rakeNo, source: st.source, destination: st.destination, direction: st.direction, wagonType: st.wagonType,
+                     inAt: st.startedAt || new Date().toISOString(), outAt: new Date().toISOString(), wagons: st.wagons });
+        RM.toast('Rake ' + st.rakeNo + ' saved. It is now available in Reports.');
+        st = fresh(); selected = -1; idleTicks = 0; persist(); renderGrid();
+    };
+
+    if (!canOperate) {
+        document.querySelectorAll('#opButtons button').forEach(b => b.disabled = true);
+        $('lockedNote').hidden = false;
+        $('inSource').disabled = $('inDest').disabled = $('selWagonType').disabled = true;
+    }
+
+    renderGrid();
+    renderDiag(RMData.mqttDiag());
+    setInterval(tick, 1500);
+})();
+</script>
+</body>
+</html>

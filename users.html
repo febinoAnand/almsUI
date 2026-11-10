@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAILMET - User Management</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/railmet.css">
+    <link rel="stylesheet" href="css/custom.css">
+</head>
+<body>
+<main class="rm-content" hidden style="overflow:auto;">
+    <div class="rm-page-head">
+        <h5><i class="bi bi-people"></i>User Management</h5>
+        <button class="rm-btn rm-btn-blue" id="btnAdd"><i class="bi bi-person-plus"></i> Add User</button>
+    </div>
+
+    <div class="rm-summary-row">
+        <div class="rm-summary-card"><div class="rm-sc-label">Total Users</div><div class="rm-sc-value blue" id="cTotal">0</div></div>
+        <div class="rm-summary-card"><div class="rm-sc-label">Active</div><div class="rm-sc-value green" id="cActive">0</div></div>
+        <div class="rm-summary-card"><div class="rm-sc-label">Disabled</div><div class="rm-sc-value orange" id="cDisabled">0</div></div>
+        <div class="rm-summary-card"><div class="rm-sc-label">Roles</div><div class="rm-sc-value dark" id="cRoles">0</div></div>
+    </div>
+
+    <div class="rm-table-wrap">
+        <div class="rm-toolbar">
+            <div class="rm-search"><i class="bi bi-search"></i><input class="rm-filter-select" id="q" placeholder="Search name, username, email"></div>
+            <select class="rm-filter-select" id="fRole" style="width:180px;"></select>
+            <select class="rm-filter-select" id="fStatus" style="width:140px;">
+                <option value="">All statuses</option><option value="1">Active</option><option value="0">Disabled</option>
+            </select>
+            <span class="rm-locked-note" id="lockedNote" hidden style="margin-left:auto;"><i class="bi bi-lock"></i> Read-only: requires <code>users.manage</code></span>
+        </div>
+        <div class="rm-table-scroll" style="max-height:none;">
+            <table class="rm-table">
+                <thead><tr><th>User</th><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Last Login</th><th>Created</th><th style="width:150px;">Actions</th></tr></thead>
+                <tbody id="tBody"></tbody>
+            </table>
+        </div>
+    </div>
+</main>
+
+<!-- Add / edit user -->
+<div class="modal fade" id="userModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content rm-modal" id="userForm" novalidate autocomplete="off">
+            <div class="modal-header"><h6 id="userModalTitle"></h6><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="rm-form-error" id="formError" hidden></div>
+                <div class="row g-3">
+                    <div class="col-sm-6"><label class="rm-form-label">Username *</label><input class="rm-filter-select" name="username" maxlength="32"></div>
+                    <div class="col-sm-6"><label class="rm-form-label">Full name *</label><input class="rm-filter-select" name="fullName" maxlength="60"></div>
+                    <div class="col-12"><label class="rm-form-label">Email</label><input class="rm-filter-select" name="email" type="email" maxlength="80"></div>
+                    <div class="col-sm-6"><label class="rm-form-label">Role *</label><select class="rm-filter-select" name="roleId" id="roleSelect"></select></div>
+                    <div class="col-sm-6"><label class="rm-form-label">Status</label>
+                        <select class="rm-filter-select" name="active"><option value="1">Active</option><option value="0">Disabled</option></select></div>
+                    <div class="col-sm-6"><label class="rm-form-label" id="pwLabel">Password *</label><input class="rm-filter-select" name="password" type="password" autocomplete="new-password"></div>
+                    <div class="col-sm-6"><label class="rm-form-label">Confirm password</label><input class="rm-filter-select" name="password2" type="password" autocomplete="new-password"></div>
+                    <div class="col-12"><div style="font-size:11px;color:#718096;" id="roleHint"></div></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="rm-btn rm-btn-gray" data-bs-dismiss="modal">Cancel</button>
+                <button class="rm-btn rm-btn-blue"><i class="bi bi-check-lg"></i> Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="js/core.js"></script>
+<script>
+(function () {
+    const me = RM.boot({ page: 'users', perm: 'users.view' });
+    if (!me) return;
+    const $ = id => document.getElementById(id);
+    const e = RM.esc;
+    const canManage = RM.can('users.manage');
+    const modal = new bootstrap.Modal($('userModal'));
+    const form = $('userForm');
+    let editing = null;
+
+    function fillRoleSelects() {
+        const roles = RM.getRoles();
+        $('fRole').innerHTML = '<option value="">All roles</option>' + roles.map(r => '<option value="' + e(r.id) + '">' + e(r.name) + '</option>').join('');
+        $('roleSelect').innerHTML = roles.map(r => '<option value="' + e(r.id) + '">' + e(r.name) + '</option>').join('');
+    }
+
+    function render() {
+        const users = RM.getUsers(), roles = RM.getRoles();
+        const roleName = id => (roles.find(r => r.id === id) || { name: '(missing role)' }).name;
+        $('cTotal').textContent = users.length;
+        $('cActive').textContent = users.filter(u => u.active).length;
+        $('cDisabled').textContent = users.filter(u => !u.active).length;
+        $('cRoles').textContent = roles.length;
+
+        const q = $('q').value.trim().toLowerCase(), fr = $('fRole').value, fs = $('fStatus').value;
+        const list = users.filter(u =>
+            (!q || [u.username, u.fullName, u.email].some(v => (v || '').toLowerCase().includes(q))) &&
+            (!fr || u.roleId === fr) && (fs === '' || String(+u.active) === fs));
+
+        $('tBody').innerHTML = list.length ? list.map(u => {
+            const self = u.username === me.username;
+            const ini = (u.fullName || u.username).split(/\s+/).slice(0, 2).map(s => s[0]).join('').toUpperCase();
+            return '<tr>' +
+                '<td><div class="rm-user-cell"><span class="rm-avatar">' + e(ini) + '</span><span class="col-wagon">' + e(u.fullName) + (self ? ' <span class="rm-badge rm-badge-info">You</span>' : '') + '</span></div></td>' +
+                '<td>' + e(u.username) + '</td><td>' + e(u.email || '—') + '</td>' +
+                '<td><span class="rm-badge rm-badge-role">' + e(roleName(u.roleId)) + '</span></td>' +
+                '<td>' + (u.active ? '<span class="rm-badge rm-badge-ok">Active</span>' : '<span class="rm-badge rm-badge-overload">Disabled</span>') + '</td>' +
+                '<td>' + RM.fmtDateTime(u.lastLogin) + '</td><td>' + RM.fmtDateTime(u.createdAt) + '</td>' +
+                '<td><div class="rm-actions">' +
+                    '<button class="rm-icon-btn" title="Edit" data-act="edit" data-u="' + e(u.username) + '"' + (canManage ? '' : ' disabled') + '><i class="bi bi-pencil"></i></button>' +
+                    '<button class="rm-icon-btn" title="' + (u.active ? 'Disable' : 'Enable') + '" data-act="toggle" data-u="' + e(u.username) + '"' + (canManage && !self ? '' : ' disabled') + '><i class="bi ' + (u.active ? 'bi-person-dash' : 'bi-person-check') + '"></i></button>' +
+                    '<button class="rm-icon-btn" title="Reset password" data-act="reset" data-u="' + e(u.username) + '"' + (canManage ? '' : ' disabled') + '><i class="bi bi-key"></i></button>' +
+                    '<button class="rm-icon-btn danger" title="Delete" data-act="delete" data-u="' + e(u.username) + '"' + (canManage && !self ? '' : ' disabled') + '><i class="bi bi-trash"></i></button>' +
+                '</div></td></tr>';
+        }).join('') : '<tr><td colspan="8" style="text-align:center;color:#A0AEC0;padding:32px;">No users match the current filters.</td></tr>';
+    }
+
+    function roleHint() {
+        const r = RM.getRole($('roleSelect').value);
+        $('roleHint').innerHTML = r ? '<i class="bi bi-info-circle"></i> ' + e(r.name) + ' — ' + r.permissions.length + ' permission(s): ' + r.permissions.map(p => '<code>' + e(p) + '</code>').join(' ') : '';
+    }
+
+    function open(user) {
+        editing = user || null;
+        form.reset();
+        $('formError').hidden = true;
+        $('userModalTitle').innerHTML = user ? '<i class="bi bi-pencil"></i> Edit User' : '<i class="bi bi-person-plus"></i> Add User';
+        $('pwLabel').textContent = user ? 'New password (leave blank to keep)' : 'Password *';
+        form.username.readOnly = !!user;
+        if (user) {
+            form.username.value = user.username; form.fullName.value = user.fullName || '';
+            form.email.value = user.email || ''; form.roleId.value = user.roleId; form.active.value = user.active ? '1' : '0';
+        } else {
+            form.roleId.value = 'operator';
+        }
+        form.active.disabled = !!(user && user.username === me.username);
+        roleHint();
+        modal.show();
+        setTimeout(() => (user ? form.fullName : form.username).focus(), 300);
+    }
+
+    form.addEventListener('submit', ev => {
+        ev.preventDefault();
+        const f = Object.fromEntries(new FormData(form));
+        const fail = msg => { $('formError').textContent = msg; $('formError').hidden = false; };
+        const username = (editing ? editing.username : f.username || '').trim();
+        if (!/^[a-zA-Z0-9._-]{3,32}$/.test(username)) return fail('Username must be 3–32 characters: letters, numbers, dot, dash or underscore.');
+        if (!(f.fullName || '').trim()) return fail('Full name is required.');
+        if (f.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) return fail('Enter a valid email address.');
+        if (!editing && !f.password) return fail('Password is required.');
+        if (f.password && f.password.length < 4) return fail('Password must be at least 4 characters.');
+        if (f.password !== f.password2) return fail('Passwords do not match.');
+        const active = editing && editing.username === me.username ? true : f.active === '1';
+        try {
+            RM.saveUser({ username, fullName: f.fullName.trim(), email: (f.email || '').trim(), roleId: f.roleId, active, password: f.password || undefined }, !editing);
+        } catch (err) { return fail(err.message); }
+        modal.hide();
+        RM.toast(editing ? 'User "' + username + '" updated.' : 'User "' + username + '" created.');
+        if (editing && username === me.username) setTimeout(() => location.reload(), 400);
+        render();
+    });
+
+    $('tBody').addEventListener('click', async ev => {
+        const b = ev.target.closest('button[data-act]'); if (!b || b.disabled) return;
+        const u = RM.getUser(b.dataset.u); if (!u) return;
+        try {
+            if (b.dataset.act === 'edit') open(u);
+            if (b.dataset.act === 'toggle') {
+                RM.saveUser({ username: u.username, active: !u.active }, false);
+                RM.toast('User "' + u.username + '" ' + (u.active ? 'disabled.' : 'enabled.'));
+            }
+            if (b.dataset.act === 'reset') {
+                if (!await RM.confirmDialog('Reset Password', 'Reset the password of "' + u.username + '"? A temporary password will be generated.', 'Reset')) return;
+                const tmp = Math.random().toString(36).slice(2, 10);
+                RM.saveUser({ username: u.username, password: tmp }, false);
+                await RM.confirmDialog('Temporary Password', 'New password for "' + u.username + '":  ' + tmp + '   — share it securely and ask the user to change it after login.', 'Done');
+            }
+            if (b.dataset.act === 'delete') {
+                if (!await RM.confirmDialog('Delete User', 'Permanently delete user "' + u.username + '"?', 'Delete', true)) return;
+                RM.deleteUser(u.username);
+                RM.toast('User "' + u.username + '" deleted.');
+            }
+        } catch (err) { RM.toast(err.message, 'error'); }
+        render();
+    });
+
+    $('btnAdd').onclick = () => open(null);
+    $('roleSelect').onchange = roleHint;
+    ['q', 'fRole', 'fStatus'].forEach(id => $(id).addEventListener('input', render));
+    if (!canManage) { $('btnAdd').hidden = true; $('lockedNote').hidden = false; }
+
+    fillRoleSelects();
+    render();
+})();
+</script>
+</body>
+</html>

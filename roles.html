@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAILMET - Roles &amp; Permissions</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/railmet.css">
+    <link rel="stylesheet" href="css/custom.css">
+</head>
+<body>
+<main class="rm-content" hidden style="overflow:auto;">
+    <div class="rm-page-head">
+        <h5><i class="bi bi-shield-lock"></i>Roles &amp; Permissions</h5>
+        <div style="display:flex;gap:8px;">
+            <button class="rm-btn rm-btn-outline" id="btnMatrix"><i class="bi bi-table"></i> Permission Matrix</button>
+            <button class="rm-btn rm-btn-blue" id="btnNew"><i class="bi bi-plus-lg"></i> New Role</button>
+        </div>
+    </div>
+
+    <div class="rm-roles-grid">
+        <div class="rm-panel" style="align-self:start;">
+            <div class="rm-panel-header"><span class="rm-panel-title">Roles</span></div>
+            <div id="roleList"></div>
+        </div>
+
+        <form class="rm-panel" id="roleForm" novalidate style="align-self:start;">
+            <div class="rm-panel-header" style="display:flex;justify-content:space-between;align-items:center;">
+                <span class="rm-panel-title" id="editorTitle">Role</span>
+                <span class="rm-locked-note" id="lockedNote" hidden><i class="bi bi-lock"></i> <span></span></span>
+            </div>
+            <div class="rm-panel-body">
+                <div class="rm-form-error" id="formError" hidden></div>
+                <div class="row g-3 mb-3">
+                    <div class="col-md-5"><label class="rm-form-label">Role name *</label><input class="rm-filter-select" name="name" maxlength="40"></div>
+                    <div class="col-md-7"><label class="rm-form-label">Description</label><input class="rm-filter-select" name="description" maxlength="120"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <label class="rm-form-label" style="margin:0;">Permissions</label>
+                    <div style="display:flex;gap:6px;" id="bulkBtns">
+                        <button type="button" class="rm-btn rm-btn-outline rm-btn-sm" data-bulk="all">Select all</button>
+                        <button type="button" class="rm-btn rm-btn-outline rm-btn-sm" data-bulk="none">Clear</button>
+                    </div>
+                </div>
+                <div id="permGroups"></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;gap:8px;flex-wrap:wrap;">
+                    <div style="font-size:11px;color:#718096;" id="usersWithRole"></div>
+                    <div style="display:flex;gap:8px;">
+                        <button type="button" class="rm-btn rm-btn-red" id="btnDelete"><i class="bi bi-trash"></i> Delete</button>
+                        <button class="rm-btn rm-btn-blue" id="btnSave"><i class="bi bi-check-lg"></i> Save Role</button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</main>
+
+<!-- Matrix overview -->
+<div class="modal fade" id="matrixModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content rm-modal">
+            <div class="modal-header"><h6><i class="bi bi-table"></i> Permission Matrix</h6><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body" style="padding:0;"><div class="rm-table-scroll" style="max-height:none;"><table class="rm-table rm-matrix" id="matrix"></table></div></div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="js/core.js"></script>
+<script>
+(function () {
+    const me = RM.boot({ page: 'roles', perm: 'roles.view' });
+    if (!me) return;
+    const $ = id => document.getElementById(id);
+    const e = RM.esc;
+    const canManage = RM.can('roles.manage');
+    const form = $('roleForm');
+    let selectedId = RM.getRoles()[0].id;   // null = creating a new role
+
+    function renderList() {
+        const users = RM.getUsers();
+        $('roleList').innerHTML = RM.getRoles().map(r => {
+            const n = users.filter(u => u.roleId === r.id).length;
+            return '<button type="button" class="rm-role-item' + (r.id === selectedId ? ' active' : '') + '" data-id="' + e(r.id) + '">' +
+                '<span><span class="rm-role-name">' + (r.system ? '<i class="bi bi-lock-fill" style="font-size:10px"></i>' : '') + e(r.name) + '</span>' +
+                '<span class="rm-role-sub">' + r.permissions.length + ' / ' + RM.ALL_PERMS.length + ' permissions</span></span>' +
+                '<span class="rm-count" title="Users">' + n + ' <i class="bi bi-person"></i></span></button>';
+        }).join('') + (selectedId === null ? '<button type="button" class="rm-role-item active"><span class="rm-role-name"><i class="bi bi-plus"></i> New role</span></button>' : '');
+    }
+
+    function renderEditor() {
+        const role = selectedId ? RM.getRole(selectedId) : { name: '', description: '', permissions: ['wagons.view'] };
+        const locked = !canManage || !!role.system;
+        const has = new Set(role.permissions);
+        $('formError').hidden = true;
+        $('editorTitle').textContent = selectedId ? 'Edit Role — ' + role.name : 'New Role';
+        form.name.value = role.name; form.description.value = role.description || '';
+        form.name.readOnly = form.description.readOnly = locked;
+
+        $('permGroups').innerHTML = RM.PERMISSIONS.map((g, gi) => {
+            const all = g.items.every(i => has.has(i[0]));
+            return '<div class="rm-perm-group"><label class="rm-perm-group-head"><span>' + e(g.module) + '</span>' +
+                '<span style="display:flex;align-items:center;gap:6px;font-size:10px;color:#718096;text-transform:none;letter-spacing:0;">All <input type="checkbox" data-group="' + gi + '"' + (all ? ' checked' : '') + (locked ? ' disabled' : '') + '></span></label>' +
+                g.items.map(i => '<label class="rm-perm-row' + (locked ? ' disabled' : '') + '"><input type="checkbox" name="perm" value="' + i[0] + '"' + (has.has(i[0]) ? ' checked' : '') + (locked ? ' disabled' : '') + '>' +
+                    '<span>' + e(i[1]) + '</span><code>' + i[0] + '</code></label>').join('') + '</div>';
+        }).join('');
+
+        const users = selectedId ? RM.getUsers().filter(u => u.roleId === selectedId) : [];
+        $('usersWithRole').innerHTML = selectedId ? (users.length ? '<i class="bi bi-people"></i> Assigned to: ' + users.map(u => e(u.username)).join(', ') : '<i class="bi bi-people"></i> Not assigned to any user') : '';
+
+        $('btnSave').hidden = locked; $('bulkBtns').hidden = locked;
+        $('btnDelete').hidden = locked || !selectedId;
+        const note = $('lockedNote');
+        note.hidden = !locked;
+        note.querySelector('span').textContent = !canManage ? 'Read-only: requires roles.manage' : 'System role — always has full access';
+    }
+
+    function syncGroups() {
+        RM.PERMISSIONS.forEach((g, gi) => {
+            const boxes = g.items.map(i => form.querySelector('input[value="' + i[0] + '"]'));
+            form.querySelector('[data-group="' + gi + '"]').checked = boxes.every(b => b.checked);
+        });
+    }
+
+    $('permGroups').addEventListener('change', ev => {
+        const t = ev.target;
+        if (t.dataset.group != null) {
+            RM.PERMISSIONS[t.dataset.group].items.forEach(i => form.querySelector('input[value="' + i[0] + '"]').checked = t.checked);
+        } else if (t.checked) {
+            (RM.IMPLIES[t.value] || []).forEach(p => form.querySelector('input[value="' + p + '"]').checked = true);   // manage ⇒ view
+        } else {
+            Object.entries(RM.IMPLIES).forEach(([k, v]) => { if (v.includes(t.value)) form.querySelector('input[value="' + k + '"]').checked = false; });
+        }
+        syncGroups();
+    });
+    $('bulkBtns').addEventListener('click', ev => {
+        const b = ev.target.closest('[data-bulk]'); if (!b) return;
+        form.querySelectorAll('input[name="perm"]').forEach(x => x.checked = b.dataset.bulk === 'all');
+        syncGroups();
+    });
+
+    $('roleList').addEventListener('click', ev => {
+        const b = ev.target.closest('[data-id]'); if (!b) return;
+        selectedId = b.dataset.id; renderList(); renderEditor();
+    });
+    $('btnNew').onclick = () => { selectedId = null; renderList(); renderEditor(); form.name.focus(); };
+
+    form.addEventListener('submit', ev => {
+        ev.preventDefault();
+        const fail = m => { $('formError').textContent = m; $('formError').hidden = false; };
+        const name = form.name.value.trim();
+        if (!name) return fail('Role name is required.');
+        const permissions = [...form.querySelectorAll('input[name="perm"]:checked')].map(x => x.value);
+        if (!permissions.length) return fail('Select at least one permission.');
+        try {
+            const saved = RM.saveRole({ id: selectedId, name, description: form.description.value.trim(), permissions }, !selectedId);
+            selectedId = saved.id;
+        } catch (err) { return fail(err.message); }
+        RM.toast('Role "' + name + '" saved.');
+        // if my own role changed, rebuild the shell so the sidebar reflects new permissions
+        if (me.roleId === selectedId) return setTimeout(() => location.reload(), 400);
+        renderList(); renderEditor();
+    });
+
+    $('btnDelete').onclick = async () => {
+        const r = RM.getRole(selectedId); if (!r) return;
+        if (!await RM.confirmDialog('Delete Role', 'Delete role "' + r.name + '"?', 'Delete', true)) return;
+        try { RM.deleteRole(r.id); } catch (err) { return RM.toast(err.message, 'error'); }
+        RM.toast('Role "' + r.name + '" deleted.');
+        selectedId = RM.getRoles()[0].id; renderList(); renderEditor();
+    };
+
+    $('btnMatrix').onclick = () => {
+        const roles = RM.getRoles();
+        $('matrix').innerHTML = '<thead><tr><th>Permission</th>' + roles.map(r => '<th>' + e(r.name) + '</th>').join('') + '</tr></thead><tbody>' +
+            RM.PERMISSIONS.map(g => '<tr><td colspan="' + (roles.length + 1) + '" style="background:#F7FAFC;font-weight:700;color:#007A8A;font-size:11px;text-transform:uppercase;">' + e(g.module) + '</td></tr>' +
+                g.items.map(i => '<tr><td>' + e(i[1]) + ' <code style="font-size:10px;color:#718096">' + i[0] + '</code></td>' +
+                    roles.map(r => '<td>' + (r.permissions.includes(i[0]) ? '<i class="bi bi-check-circle-fill yes"></i>' : '<i class="bi bi-dash-circle no"></i>') + '</td>').join('') + '</tr>').join('')).join('') + '</tbody>';
+        new bootstrap.Modal($('matrixModal')).show();
+    };
+
+    if (!canManage) $('btnNew').hidden = true;
+    renderList(); renderEditor();
+})();
+</script>
+</body>
+</html>
